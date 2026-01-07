@@ -5,25 +5,38 @@
     <meta charset="utf-8">
     <title>2048 Game - CI/CD Pipeline Demo</title>
     <link rel="stylesheet" href="style.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 </head>
 
 <body>
     <div class="container">
         <div class="heading">
-            <h1 class="title">2048 - Version 2.1</h1>
+            <h1 class="title">2048 v3.0</h1>
             <div class="scores-container">
-                <div class="score-container">0</div>
+                <div class="score-box">
+                    <div class="score-label">SCORE</div>
+                    <div class="score-value" id="current-score">0</div>
+                </div>
+                <div class="score-box best-score">
+                    <div class="score-label">BEST</div>
+                    <div class="score-value" id="best-score">0</div>
+                </div>
             </div>
         </div>
-        <div class="game-intro">Join the numbers and get to the <strong>2048 tile!</strong></div>
-        <div class="game-container">
+
+        <div class="above-game">
+            <p class="game-intro">Join the numbers and get to the <strong>2048 tile!</strong></p>
+            <button class="restart-button" id="restart-btn">New Game</button>
+        </div>
+
+        <div class="game-container" id="game-board">
             <div class="game-message">
                 <p></p>
                 <div class="lower">
-                    <a class="retry-button">Try again</a>
+                    <button class="retry-button">Try again</button>
                 </div>
             </div>
+
             <div class="grid-container">
                 <div class="grid-row">
                     <div class="grid-cell"></div>
@@ -50,42 +63,44 @@
                     <div class="grid-cell"></div>
                 </div>
             </div>
-            <div class="tile-container"></div>
+
+            <div class="tile-container" id="tile-container"></div>
         </div>
+
         <p class="game-explanation">
-            <strong class="important">How to play:</strong> Use your <strong>arrow keys</strong> or the <strong>buttons
-                below</strong> to move the tiles. When two tiles with the same number touch, they <strong>merge into
-                one!</strong>
+            <strong>How to play:</strong> Use your <strong>arrow keys</strong>, <strong>swipe</strong>, or <strong>tap
+                buttons</strong> to move tiles. Tiles with the same number <strong>merge into one!</strong>
         </p>
 
-        <!-- NEW: Mobile Control Buttons -->
-        <div class="mobile-controls">
-            <div class="controls-row">
-                <button id="btn-up" class="control-button">
-                    <span class="arrow">▲</span>
-                    <span class="label">UP</span>
+        <div class="button-container">
+            <div class="button-row">
+                <button class="game-button" id="btn-up" aria-label="Move up">
+                    <span class="button-icon">▲</span>
+                    <span class="button-text">UP</span>
                 </button>
             </div>
-            <div class="controls-row">
-                <button id="btn-left" class="control-button">
-                    <span class="arrow">◄</span>
-                    <span class="label">LEFT</span>
+            <div class="button-row">
+                <button class="game-button" id="btn-left" aria-label="Move left">
+                    <span class="button-icon">◄</span>
+                    <span class="button-text">LEFT</span>
                 </button>
-                <button id="btn-down" class="control-button">
-                    <span class="arrow">▼</span>
-                    <span class="label">DOWN</span>
+                <button class="game-button" id="btn-down" aria-label="Move down">
+                    <span class="button-icon">▼</span>
+                    <span class="button-text">DOWN</span>
                 </button>
-                <button id="btn-right" class="control-button">
-                    <span class="arrow">►</span>
-                    <span class="label">RIGHT</span>
+                <button class="game-button" id="btn-right" aria-label="Move right">
+                    <span class="button-icon">►</span>
+                    <span class="button-text">RIGHT</span>
                 </button>
             </div>
         </div>
-        <!-- END: Mobile Control Buttons -->
 
         <hr>
-        <p><strong>Deployed via AWS CI/CD Pipeline</strong> | CodePipeline → CodeBuild → ECR → ECS Fargate</p>
-        <p><em>Version 2.0 - Now with mobile touch controls! 📱</em></p>
+        <p class="footer-text">
+            <strong>AWS CI/CD Pipeline Demo</strong><br>
+            CodePipeline → CodeBuild → ECR → ECS Fargate<br>
+            <em>Version 3.0: Swipe Gestures + High Score Tracking 🎯</em>
+        </p>
     </div>
     <script src="game.js"></script>
 </body>
