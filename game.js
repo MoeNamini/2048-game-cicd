@@ -265,7 +265,7 @@
         do {
             previous = cell;
             cell = { row: previous.row + vector.row, col: previous.col + vector.col };
-        } while (withinBounds(cell) && !grid[cell.row][cell.col]);
+        } while (withinBounds(cell) && grid[cell.row][cell.col] === null);
 
         return {
             farthest: previous,
