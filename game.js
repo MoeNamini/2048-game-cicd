@@ -21,6 +21,7 @@
         addRandomTile();
         renderTiles();
         setupInput();
+        setupMobileControls(); // NEW: Set up button controls
     }
 
     function addRandomTile() {
@@ -180,6 +181,54 @@
         document.querySelector('.retry-button').addEventListener('click', function () {
             document.querySelector('.game-message').style.display = 'none';
             init();
+        });
+    }
+
+    // NEW: Set up mobile control buttons
+    function setupMobileControls() {
+        var btnUp = document.getElementById('btn-up');
+        var btnDown = document.getElementById('btn-down');
+        var btnLeft = document.getElementById('btn-left');
+        var btnRight = document.getElementById('btn-right');
+
+        if (btnUp) {
+            btnUp.addEventListener('click', function () {
+                move('up');
+            });
+        }
+
+        if (btnDown) {
+            btnDown.addEventListener('click', function () {
+                move('down');
+            });
+        }
+
+        if (btnLeft) {
+            btnLeft.addEventListener('click', function () {
+                move('left');
+            });
+        }
+
+        if (btnRight) {
+            btnRight.addEventListener('click', function () {
+                move('right');
+            });
+        }
+
+        // Add touch support for better mobile experience
+        [btnUp, btnDown, btnLeft, btnRight].forEach(function (btn) {
+            if (btn) {
+                // Prevent default touch behavior to avoid scrolling
+                btn.addEventListener('touchstart', function (e) {
+                    e.preventDefault();
+                });
+
+                // Handle touch events same as clicks
+                btn.addEventListener('touchend', function (e) {
+                    e.preventDefault();
+                    btn.click();
+                });
+            }
         });
     }
 

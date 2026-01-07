@@ -11,7 +11,7 @@
 <body>
     <div class="container">
         <div class="heading">
-            <h1 class="title">2048</h1>
+            <h1 class="title">2048 - Version 2.0</h1>
             <div class="scores-container">
                 <div class="score-container">0</div>
             </div>
@@ -53,11 +53,39 @@
             <div class="tile-container"></div>
         </div>
         <p class="game-explanation">
-            <strong class="important">How to play:</strong> Use your <strong>arrow keys</strong> to move the tiles. When
-            two tiles with the same number touch, they <strong>merge into one!</strong>
+            <strong class="important">How to play:</strong> Use your <strong>arrow keys</strong> or the <strong>buttons
+                below</strong> to move the tiles. When two tiles with the same number touch, they <strong>merge into
+                one!</strong>
         </p>
+
+        <!-- NEW: Mobile Control Buttons -->
+        <div class="mobile-controls">
+            <div class="controls-row">
+                <button id="btn-up" class="control-button">
+                    <span class="arrow">▲</span>
+                    <span class="label">UP</span>
+                </button>
+            </div>
+            <div class="controls-row">
+                <button id="btn-left" class="control-button">
+                    <span class="arrow">◄</span>
+                    <span class="label">LEFT</span>
+                </button>
+                <button id="btn-down" class="control-button">
+                    <span class="arrow">▼</span>
+                    <span class="label">DOWN</span>
+                </button>
+                <button id="btn-right" class="control-button">
+                    <span class="arrow">►</span>
+                    <span class="label">RIGHT</span>
+                </button>
+            </div>
+        </div>
+        <!-- END: Mobile Control Buttons -->
+
         <hr>
         <p><strong>Deployed via AWS CI/CD Pipeline</strong> | CodePipeline → CodeBuild → ECR → ECS Fargate</p>
+        <p><em>Version 2.0 - Now with mobile touch controls! 📱</em></p>
     </div>
     <script src="game.js"></script>
 </body>

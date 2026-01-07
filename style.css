@@ -17,6 +17,18 @@ body {
     margin: 0 auto;
 }
 
+/* Make container responsive for mobile */
+@media screen and (max-width: 600px) {
+    .container {
+        width: 95%;
+        max-width: 500px;
+    }
+
+    body {
+        margin: 20px 0;
+    }
+}
+
 .heading {
     margin-bottom: 20px;
 }
@@ -27,6 +39,12 @@ body {
     margin: 0;
     display: inline-block;
     color: #776e65;
+}
+
+@media screen and (max-width: 600px) {
+    .title {
+        font-size: 50px;
+    }
 }
 
 .scores-container {
@@ -63,6 +81,14 @@ body {
     width: 500px;
     height: 500px;
     box-sizing: border-box;
+}
+
+@media screen and (max-width: 600px) {
+    .game-container {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+    }
 }
 
 .game-message {
@@ -136,6 +162,14 @@ body {
 
 .grid-cell:last-child {
     margin-right: 0;
+}
+
+@media screen and (max-width: 600px) {
+    .grid-cell {
+        width: 18vw;
+        height: 18vw;
+        margin-right: 2vw;
+    }
 }
 
 .tile-container {
@@ -220,4 +254,85 @@ body {
 .game-explanation {
     margin-top: 40px;
     font-size: 16px;
+}
+
+/* NEW: Mobile Control Buttons Styles */
+.mobile-controls {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f9f6f2;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.controls-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.control-button {
+    background: linear-gradient(to bottom, #8f7a66, #7a6656);
+    border: none;
+    border-radius: 8px;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    transition: all 0.15s ease;
+    color: white;
+    font-weight: bold;
+}
+
+.control-button:hover {
+    background: linear-gradient(to bottom, #a08674, #8f7a66);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+}
+
+.control-button:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(to bottom, #7a6656, #6a5646);
+}
+
+.control-button .arrow {
+    font-size: 28px;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.control-button .label {
+    font-size: 11px;
+    letter-spacing: 0.5px;
+}
+
+/* Make buttons larger on mobile */
+@media screen and (max-width: 600px) {
+    .control-button {
+        width: 90px;
+        height: 90px;
+    }
+
+    .control-button .arrow {
+        font-size: 32px;
+    }
+
+    .control-button .label {
+        font-size: 12px;
+    }
+}
+
+/* Visual feedback for touch devices */
+@media (hover: none) {
+    .control-button:active {
+        background: linear-gradient(to bottom, #6a5646, #5a4636);
+    }
 }
