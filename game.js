@@ -170,7 +170,12 @@
 
                 if (tile) {
                     var positions = findFarthestPosition(tile, vector);
-                    var next = grid[positions.next.row][positions.next.col];
+                    var next = null;
+
+                    // Only check next position if it's within bounds
+                    if (withinBounds(positions.next)) {
+                        next = grid[positions.next.row][positions.next.col];
+                    }
 
                     // Merge tiles
                     if (next && next.value === tile.value && merged.indexOf(next) === -1) {
