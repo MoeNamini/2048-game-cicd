@@ -21,7 +21,7 @@
         addRandomTile();
         renderTiles();
         setupInput();
-        setupMobileControls(); // NEW: Set up button controls
+
     }
 
     function addRandomTile() {
@@ -47,19 +47,40 @@
         var container = document.querySelector('.tile-container');
         container.innerHTML = '';
 
+        // Check if we're on mobile
+        var isMobile = window.innerWidth <= 600;
+
         tiles.forEach(function (tile) {
             var tileElement = document.createElement('div');
             tileElement.className = 'tile tile-' + tile.value;
-            tileElement.style.width = '106.25px';
-            tileElement.style.height = '106.25px';
-            tileElement.style.left = (tile.y * 121.25) + 'px';
-            tileElement.style.top = (tile.x * 121.25) + 'px';
+
+            if (isMobile) {
+                // Use viewport units for mobile
+                tileElement.style.width = '18vw';
+                tileElement.style.height = '18vw';
+                tileElement.style.left = (tile.y * 20) + 'vw'; // 18vw + 2vw margin
+                tileElement.style.top = (tile.x * 20) + 'vw';
+            } else {
+                // Use pixels for desktop
+                tileElement.style.width = '106.25px';
+                tileElement.style.height = '106.25px';
+                tileElement.style.left = (tile.y * 121.25) + 'px';
+                tileElement.style.top = (tile.x * 121.25) + 'px';
+            }
 
             var inner = document.createElement('div');
             inner.className = 'tile-inner';
             inner.textContent = tile.value;
-            inner.style.width = '106.25px';
-            inner.style.height = '106.25px';
+
+            if (isMobile) {
+                inner.style.width = '18vw';
+                inner.style.height = '18vw';
+                inner.style.lineHeight = '18vw';
+            } else {
+                inner.style.width = '106.25px';
+                inner.style.height = '106.25px';
+                inner.style.lineHeight = '116.25px';
+            }
 
             tileElement.appendChild(inner);
             container.appendChild(tileElement);
@@ -232,5 +253,6 @@
         });
     }
 
+    setupMobileControls();
     init();
 })();

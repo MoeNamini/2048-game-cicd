@@ -170,6 +170,30 @@ body {
         height: 18vw;
         margin-right: 2vw;
     }
+
+    .tile {
+        width: 18vw !important;
+        height: 18vw !important;
+    }
+
+    .tile .tile-inner {
+        width: 18vw !important;
+        height: 18vw !important;
+        line-height: 18vw !important;
+        font-size: 8vw !important;
+    }
+
+    /* Adjust font sizes for different tile values */
+    .tile.tile-128 .tile-inner,
+    .tile.tile-256 .tile-inner,
+    .tile.tile-512 .tile-inner {
+        font-size: 6vw !important;
+    }
+
+    .tile.tile-1024 .tile-inner,
+    .tile.tile-2048 .tile-inner {
+        font-size: 5vw !important;
+    }
 }
 
 .tile-container {
