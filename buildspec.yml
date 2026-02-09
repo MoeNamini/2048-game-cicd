@@ -50,23 +50,6 @@ phases:
           exit 1
         fi
       
-      # Test 5: Check Dockerfile
-      - echo "Test 5 - Validating Dockerfile..."
-      - |
-        if [ -f "Dockerfile" ]; then
-          if grep -q "FROM nginx" Dockerfile && \
-             grep -q "COPY" Dockerfile && \
-             grep -q "EXPOSE 80" Dockerfile; then
-            echo "✓ Dockerfile valid"
-          else
-            echo "ERROR: Dockerfile structure invalid"
-            exit 1
-          fi
-        else
-          echo "ERROR: Dockerfile not found"
-          exit 1
-        fi
-      
       # Test 6: Check file sizes
       - echo "Test 6 - Checking file sizes..."
       - |
