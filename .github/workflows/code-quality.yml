@@ -56,12 +56,14 @@ jobs:
     - name: Check for sensitive data
       run: |
         echo "Checking for API keys and secrets..."
-        if grep -r "AKIA" . --exclude-dir=.git; then
+        # Check for AWS access keys (but exclude this workflow file itself)
+        if grep -r "AKIA[0-9A-Z]\{16\}" . --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
           echo "❌ AWS Access Key found in code!"
           exit 1
         fi
-        if grep -r "api_key\|API_KEY" . --exclude-dir=.git --exclude=".github" --exclude="README.md"; then
-          echo "⚠ Possible API key references found"
+        # Check for other API key patterns in source files only
+        if grep -rE "api[_-]?key|API[_-]?KEY" index.html style.css game.js 2>/dev/null | grep -v "// " | grep -v "/\*"; then
+          echo "⚠ Possible API key references found in code"
         fi
         echo "✓ No obvious secrets found"
     
