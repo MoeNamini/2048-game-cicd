@@ -1,108 +1,132 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <meta charset="utf-8">
-    <title>2048 Game - CI/CD Pipeline Demo</title>
-    <link rel="stylesheet" href="style.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta charset="utf-8">
+  <title>2048 Game - CI/CD Pipeline Demo</title>
+  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 </head>
-
 <body>
-    <div class="container">
-        <div class="heading">
-            <h1 class="title">2048 v3.0</h1>
-            <div class="scores-container">
-                <div class="score-box">
-                    <div class="score-label">SCORE</div>
-                    <div class="score-value" id="current-score">0</div>
-                </div>
-                <div class="score-box best-score">
-                    <div class="score-label">BEST</div>
-                    <div class="score-value" id="best-score">0</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="above-game">
-            <p class="game-intro">Join the numbers and get to the <strong>2048 tile!</strong></p>
-            <button class="restart-button" id="restart-btn">New Game</button>
-        </div>
-
-        <div class="game-container" id="game-board">
-            <div class="game-message">
-                <p></p>
-                <div class="lower">
-                    <button class="retry-button">Try again</button>
-                </div>
-            </div>
-
-            <div class="grid-container">
-                <div class="grid-row">
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                </div>
-                <div class="grid-row">
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                </div>
-                <div class="grid-row">
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                </div>
-                <div class="grid-row">
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                    <div class="grid-cell"></div>
-                </div>
-            </div>
-
-            <div class="tile-container" id="tile-container"></div>
-        </div>
-
-        <p class="game-explanation">
-            <strong>How to play:</strong> Use your <strong>arrow keys</strong>, <strong>swipe</strong>, or <strong>tap
-                buttons</strong> to move tiles. Tiles with the same number <strong>merge into one!</strong>
-        </p>
-
-        <div class="button-container">
-            <div class="button-row">
-                <button class="game-button" id="btn-up" aria-label="Move up">
-                    <span class="button-icon">▲</span>
-                    <span class="button-text">UP</span>
-                </button>
-            </div>
-            <div class="button-row">
-                <button class="game-button" id="btn-left" aria-label="Move left">
-                    <span class="button-icon">◄</span>
-                    <span class="button-text">LEFT</span>
-                </button>
-                <button class="game-button" id="btn-down" aria-label="Move down">
-                    <span class="button-icon">▼</span>
-                    <span class="button-text">DOWN</span>
-                </button>
-                <button class="game-button" id="btn-right" aria-label="Move right">
-                    <span class="button-icon">►</span>
-                    <span class="button-text">RIGHT</span>
-                </button>
-            </div>
-        </div>
-
-        <hr>
-        <p class="footer-text">
-            <strong>AWS CI/CD Pipeline Demo</strong><br>
-            CodePipeline → CodeBuild → ECR → ECS Fargate<br>
-            <em>Version 3.0: Swipe Gestures + High Score Tracking 🎯</em>
-        </p>
+  <div class="container">
+    <!-- Theme Selector -->
+    <div class="theme-selector">
+      <button class="theme-btn active" data-theme="classic">Classic</button>
+      <button class="theme-btn" data-theme="dark">Dark</button>
+      <button class="theme-btn" data-theme="ocean">Ocean</button>
     </div>
-    <script src="game.js"></script>
-</body>
 
+    <!-- Username Section -->
+    <div class="username-section" id="username-section">
+      <input type="text" id="username-input" placeholder="Enter your username" maxlength="20">
+      <button id="save-username">Save Username</button>
+    </div>
+    <div class="username-display" id="username-display" style="display: none;">
+      <span>Playing as: <strong id="current-username"></strong></span>
+      <button id="change-username" class="small-btn">Change</button>
+    </div>
+
+    <div class="heading">
+      <h1 class="title">2048 v4.5</h1>
+      <div class="scores-container">
+        <div class="score-box">
+          <div class="score-label">SCORE</div>
+          <div class="score-value" id="current-score">0</div>
+        </div>
+        <div class="score-box best-score">
+          <div class="score-label">BEST</div>
+          <div class="score-value" id="best-score">0</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="above-game">
+      <p class="game-intro">Join the numbers and get to the <strong>2048 tile!</strong></p>
+      <button class="restart-button" id="restart-btn">New Game</button>
+    </div>
+
+    <div class="game-container" id="game-board">
+      <div class="game-message">
+        <p></p>
+        <div class="lower">
+          <button class="retry-button">Try again</button>
+          <button class="share-button" id="share-score">Share Score</button>
+        </div>
+      </div>
+      
+      <div class="grid-container">
+        <div class="grid-row">
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+        </div>
+        <div class="grid-row">
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+        </div>
+        <div class="grid-row">
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+        </div>
+        <div class="grid-row">
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+        </div>
+      </div>
+      
+      <div class="tile-container" id="tile-container"></div>
+    </div>
+
+    <!-- Leaderboard Section -->
+    <div class="leaderboard-section" id="leaderboard">
+      <h3>Global Leaderboard</h3>
+      <div class="leaderboard-content" id="leaderboard-content">
+        <p class="loading">Loading leaderboard...</p>
+      </div>
+      <button id="refresh-leaderboard" class="small-btn">Refresh</button>
+    </div>
+
+    <p class="game-explanation">
+      <strong>How to play:</strong> Use your <strong>arrow keys</strong>, <strong>swipe</strong>, or <strong>tap buttons</strong> to move tiles. Tiles with the same number <strong>merge into one!</strong>
+    </p>
+
+    <div class="button-container">
+      <div class="button-row">
+        <button class="game-button" id="btn-up" aria-label="Move up">
+          <span class="button-icon">▲</span>
+          <span class="button-text">UP</span>
+        </button>
+      </div>
+      <div class="button-row">
+        <button class="game-button" id="btn-left" aria-label="Move left">
+          <span class="button-icon">◄</span>
+          <span class="button-text">LEFT</span>
+        </button>
+        <button class="game-button" id="btn-down" aria-label="Move down">
+          <span class="button-icon">▼</span>
+          <span class="button-text">DOWN</span>
+        </button>
+        <button class="game-button" id="btn-right" aria-label="Move right">
+          <span class="button-icon">►</span>
+          <span class="button-text">RIGHT</span>
+        </button>
+      </div>
+    </div>
+
+    <hr>
+    <p class="footer-text">
+      <strong>AWS CI/CD Pipeline with Blue/Green Deployment</strong><br>
+      GitHub Actions → CodePipeline → CodeBuild → ECR → ECS Fargate (Blue/Green)<br>
+      Lambda → API Gateway → DynamoDB<br>
+      <em>Version 4.5: Full-Stack Implementation with Testing & Monitoring</em>
+    </p>
+  </div>
+  <script src="game.js"></script>
+</body>
 </html>

@@ -3,17 +3,101 @@ version: 0.2
 phases:
   pre_build:
     commands:
+      - echo Pre-build phase started on `date`
+      - echo Running automated tests...
+      
+      # Test 1: Check required files exist
+      - echo "Test 1 - Checking required files..."
+      - |
+        for file in index.html style.css game.js Dockerfile; do
+          if [ ! -f "$file" ]; then
+            echo "ERROR: Required file $file not found"
+            exit 1
+          fi
+          echo "✓ Found $file"
+        done
+      
+      # Test 2: Validate HTML structure
+      - echo "Test 2 - Validating HTML structure..."
+      - |
+        if grep -q "<!DOCTYPE html>" index.html && \
+           grep -q "<title>" index.html && \
+           grep -q "game.js" index.html; then
+          echo "✓ HTML structure valid"
+        else
+          echo "ERROR: HTML structure invalid"
+          exit 1
+        fi
+      
+      # Test 3: Check CSS for theme variables
+      - echo "Test 3 - Checking CSS theme variables..."
+      - |
+        if grep -q ":root" style.css && \
+           grep -q "data-theme" style.css; then
+          echo "✓ CSS themes configured"
+        else
+          echo "WARNING: CSS themes may not be configured"
+        fi
+      
+      # Test 4: Validate JavaScript syntax (basic)
+      - echo "Test 4 - Basic JavaScript validation..."
+      - |
+        if grep -q "function init()" game.js && \
+           grep -q "setupEventListeners" game.js; then
+          echo "✓ JavaScript structure valid"
+        else
+          echo "ERROR: JavaScript structure invalid"
+          exit 1
+        fi
+      
+      # Test 5: Check Dockerfile
+      - echo "Test 5 - Validating Dockerfile..."
+      - |
+        if grep -q "FROM nginx" Dockerfile && \
+           grep -q "COPY" Dockerfile && \
+           grep -q "EXPOSE 80" Dockerfile; then
+          echo "✓ Dockerfile valid"
+        else
+          echo "ERROR: Dockerfile invalid"
+          exit 1
+        fi
+      
+      # Test 6: Check file sizes
+      - echo "Test 6 - Checking file sizes..."
+      - |
+        for file in index.html style.css game.js; do
+          size=$(wc -c < "$file")
+          echo "$file: $size bytes"
+          if [ $size -gt 1000000 ]; then
+            echo "WARNING: $file is larger than 1MB"
+          fi
+        done
+      
+      - echo "All tests passed!"
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - echo "Building image with tag $IMAGE_TAG"
+  
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
       - docker build -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+      
+      # Test 7: Verify Docker image
+      - echo "Test 7 - Verifying Docker image..."
+      - |
+        if docker images | grep -q $IMAGE_REPO_NAME; then
+          echo "✓ Docker image created successfully"
+        else
+          echo "ERROR: Docker image not created"
+          exit 1
+        fi
+  
   post_build:
     commands:
       - echo Build completed on `date`
@@ -22,5 +106,17 @@ phases:
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - echo Writing image definitions file...
       - printf '[{"name":"2048-game-container","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - cat imagedefinitions.json
+      - echo "Deployment artifact ready"
+
 artifacts:
-  files: imagedefinitions.json
+  files: 
+    - imagedefinitions.json
+    - appspec.yaml
+
+reports:
+  test_report:
+    files:
+      - '**/*'
+    base-directory: 'test-results'
+    discard-paths: yes

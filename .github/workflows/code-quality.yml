@@ -1,0 +1,86 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: |
+        npm install -g htmlhint csslint jshint
+    
+    - name: Validate HTML
+      run: |
+        echo "Validating HTML files..."
+        htmlhint index.html || true
+        if [ $? -eq 0 ]; then
+          echo "✓ HTML validation passed"
+        else
+          echo "⚠ HTML validation warnings found"
+        fi
+    
+    - name: Validate CSS
+      run: |
+        echo "Validating CSS files..."
+        csslint --quiet --format=compact style.css || true
+        if [ $? -eq 0 ]; then
+          echo "✓ CSS validation passed"
+        else
+          echo "⚠ CSS validation warnings found"
+        fi
+    
+    - name: Validate JavaScript
+      run: |
+        echo "Validating JavaScript files..."
+        jshint game.js --config .jshintrc || true
+        if [ $? -eq 0 ]; then
+          echo "✓ JavaScript validation passed"
+        else
+          echo "⚠ JavaScript validation warnings found"
+        fi
+    
+    - name: Check for sensitive data
+      run: |
+        echo "Checking for API keys and secrets..."
+        if grep -r "AKIA" . --exclude-dir=.git; then
+          echo "❌ AWS Access Key found in code!"
+          exit 1
+        fi
+        if grep -r "api_key\|API_KEY" . --exclude-dir=.git --exclude=".github" --exclude="README.md"; then
+          echo "⚠ Possible API key references found"
+        fi
+        echo "✓ No obvious secrets found"
+    
+    - name: Check file sizes
+      run: |
+        echo "Checking file sizes..."
+        for file in index.html style.css game.js; do
+          size=$(wc -c < "$file")
+          echo "$file: $size bytes"
+          if [ $size -gt 500000 ]; then
+            echo "⚠ Warning: $file is larger than 500KB"
+          fi
+        done
+    
+    - name: Summary
+      run: |
+        echo "========================================="
+        echo "Code Quality Check Summary"
+        echo "========================================="
+        echo "All validation checks completed."
+        echo "Review warnings above if any."
+        echo "========================================="

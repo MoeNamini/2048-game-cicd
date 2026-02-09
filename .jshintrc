@@ -1,0 +1,15 @@
+{
+  "esversion": 5,
+  "browser": true,
+  "devel": true,
+  "globals": {
+    "fetch": true,
+    "localStorage": true,
+    "navigator": true
+  },
+  "undef": true,
+  "unused": true,
+  "eqeqeq": true,
+  "curly": true,
+  "latedef": "nofunc"
+}
