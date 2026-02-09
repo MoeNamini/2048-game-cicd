@@ -53,12 +53,17 @@ phases:
       # Test 5: Check Dockerfile
       - echo "Test 5 - Validating Dockerfile..."
       - |
-        if grep -q "FROM nginx" Dockerfile && \
-           grep -q "COPY" Dockerfile && \
-           grep -q "EXPOSE 80" Dockerfile; then
-          echo "✓ Dockerfile valid"
+        if [ -f "Dockerfile" ]; then
+          if grep -q "FROM nginx" Dockerfile && \
+             grep -q "COPY" Dockerfile && \
+             grep -q "EXPOSE 80" Dockerfile; then
+            echo "✓ Dockerfile valid"
+          else
+            echo "ERROR: Dockerfile structure invalid"
+            exit 1
+          fi
         else
-          echo "ERROR: Dockerfile invalid"
+          echo "ERROR: Dockerfile not found"
           exit 1
         fi
       
@@ -66,10 +71,12 @@ phases:
       - echo "Test 6 - Checking file sizes..."
       - |
         for file in index.html style.css game.js; do
-          size=$(wc -c < "$file")
-          echo "$file: $size bytes"
-          if [ $size -gt 1000000 ]; then
-            echo "WARNING: $file is larger than 1MB"
+          if [ -f "$file" ]; then
+            size=$(wc -c < "$file")
+            echo "$file: $size bytes"
+            if [ $size -gt 1000000 ]; then
+              echo "WARNING: $file is larger than 1MB"
+            fi
           fi
         done
       
@@ -112,11 +119,3 @@ phases:
 artifacts:
   files: 
     - imagedefinitions.json
-    - appspec.yaml
-
-reports:
-  test_report:
-    files:
-      - '**/*'
-    base-directory: 'test-results'
-    discard-paths: yes
