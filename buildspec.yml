@@ -95,9 +95,15 @@ phases:
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - echo Writing image definitions file...
-      - printf '[{"name":"2048-game-container","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - printf '[{"name":"2048-game-container","imageUri":"%s"}]' $REPOSITORY_URI:latest > imagedefinitions.json
       - cat imagedefinitions.json
       - echo "Deployment artifact ready"
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - '**/*'
+  name: BuildArtifact
 
 artifacts:
   files: 

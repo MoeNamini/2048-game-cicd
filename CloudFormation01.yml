@@ -1,0 +1,1262 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: '2048 Game CI/CD Pipeline - Complete Infrastructure for Version 4.5'
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name (username/repo)
+    Default: 'YourUsername/2048-game-cicd'
+  
+  GitHubBranch:
+    Type: String
+    Description: GitHub branch to track
+    Default: 'main'
+  
+  GitHubConnectionArn:
+    Type: String
+    Description: ARN of GitHub connection (create manually first)
+  
+  NotificationEmail:
+    Type: String
+    Description: Email for CloudWatch alarm notifications
+    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "GitHub Configuration"
+        Parameters:
+          - GitHubRepo
+          - GitHubBranch
+          - GitHubConnectionArn
+      - Label:
+          default: "Monitoring Configuration"
+        Parameters:
+          - NotificationEmail
+
+Resources:
+
+  # ==========================================
+  # DynamoDB Table for Leaderboard
+  # ==========================================
+  LeaderboardTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: 2048-leaderboard
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+        - Key: Environment
+          Value: Production
+
+  # ==========================================
+  # IAM Roles
+  # ==========================================
+  
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt LeaderboardTable.Arn
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # CodeBuild Service Role
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${ArtifactBucket.Arn}/*'
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # CodePipeline Service Role
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+                Resource: !Sub '${ArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !GetAtt CodeBuildProject.Arn
+              - Effect: Allow
+                Action:
+                  - ecs:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt ECSTaskExecutionRole.Arn
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ECS Task Execution Role
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # Lambda Function for Backend API
+  # ==========================================
+  BackendAPIFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: 2048-game-api
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref LeaderboardTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from datetime import datetime
+          from decimal import Decimal
+
+          dynamodb = boto3.resource('dynamodb')
+          table_name = os.environ.get('TABLE_NAME', '2048-leaderboard')
+          table = dynamodb.Table(table_name)
+
+          def lambda_handler(event, context):
+              http_method = event.get('httpMethod', event.get('requestContext', {}).get('http', {}).get('method', ''))
+              path = event.get('path', event.get('rawPath', ''))
+              
+              try:
+                  if http_method == 'GET' and '/scores' in path:
+                      return get_scores()
+                  elif http_method == 'POST' and '/scores' in path:
+                      body = json.loads(event.get('body', '{}'))
+                      return submit_score(body)
+                  elif http_method == 'OPTIONS':
+                      return cors_response(200, {'message': 'OK'})
+                  else:
+                      return cors_response(400, {'error': 'Invalid request'})
+              except Exception as e:
+                  return cors_response(500, {'error': str(e)})
+
+          def get_scores():
+              try:
+                  response = table.scan(Limit=100)
+                  items = response.get('Items', [])
+                  items.sort(key=lambda x: int(x.get('score', 0)), reverse=True)
+                  top_scores = items[:10]
+                  for item in top_scores:
+                      if 'score' in item:
+                          item['score'] = int(item['score'])
+                  return cors_response(200, {'scores': top_scores})
+              except Exception as e:
+                  return cors_response(500, {'error': 'Failed to retrieve scores'})
+
+          def submit_score(body):
+              try:
+                  username = body.get('username', '').strip()
+                  score = body.get('score', 0)
+                  timestamp = body.get('timestamp', datetime.utcnow().isoformat())
+                  
+                  if not username or len(username) < 3 or len(username) > 20:
+                      return cors_response(400, {'error': 'Username must be 3-20 characters'})
+                  
+                  if not isinstance(score, int) or score < 0:
+                      return cors_response(400, {'error': 'Invalid score'})
+                  
+                  try:
+                      existing = table.get_item(Key={'username': username})
+                      existing_score = int(existing.get('Item', {}).get('score', 0))
+                      if score <= existing_score:
+                          return cors_response(200, {
+                              'message': 'Score not updated (not a new high score)',
+                              'current_best': existing_score
+                          })
+                  except:
+                      pass
+                  
+                  table.put_item(
+                      Item={
+                          'username': username,
+                          'score': Decimal(str(score)),
+                          'timestamp': timestamp,
+                          'updated_at': datetime.utcnow().isoformat()
+                      }
+                  )
+                  
+                  return cors_response(200, {
+                      'message': 'Score submitted successfully',
+                      'username': username,
+                      'score': score
+                  })
+              except Exception as e:
+                  return cors_response(500, {'error': 'Failed to submit score'})
+
+          def cors_response(status_code, body):
+              return {
+                  'statusCode': status_code,
+                  'headers': {
+                      'Content-Type': 'application/json',
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                      'Access-Control-Allow-Headers': 'Content-Type'
+                  },
+                  'body': json.dumps(body)
+              }
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # Lambda Permission for API Gateway
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BackendAPIFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/scores'
+
+  # ==========================================
+  # API Gateway
+  # ==========================================
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: 2048-game-api
+      Description: API for 2048 game leaderboard
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  ApiGatewayScoresResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: scores
+
+  ApiGatewayGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayScoresResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BackendAPIFunction.Arn}/invocations'
+
+  ApiGatewayPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayScoresResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BackendAPIFunction.Arn}/invocations'
+
+  ApiGatewayOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayScoresResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiGatewayGetMethod
+      - ApiGatewayPostMethod
+      - ApiGatewayOptionsMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+
+  # ==========================================
+  # ECR Repository
+  # ==========================================
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: 2048-game-repo
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 5 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 5
+              },
+              "action": { "type": "expire" }
+            }]
+          }
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # ECS Cluster
+  # ==========================================
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: 2048-game-cluster
+      CapacityProviders:
+        - FARGATE
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ECS Task Definition
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: 2048-game-task
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: 2048-game-container
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ECS Log Group
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/2048-game-task
+      RetentionInDays: 7
+
+  # Security Group for ALB
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for 2048 game load balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # Security Group for ECS Tasks
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for 2048 game ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: 2048-game-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # Target Group for ECS Service
+  ECSTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: 2048-game-tg
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ALB Listener
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ECSTargetGroup
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: 
+      - ECSTaskDefinition
+      - ALBListener
+    Properties:
+      ServiceName: 2048-game-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ECSTaskDefinition
+      DesiredCount: 2
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - ContainerName: 2048-game-container
+          ContainerPort: 80
+          TargetGroupArn: !Ref ECSTargetGroup
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # VPC and Networking
+  # ==========================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: 2048-game-vpc
+        - Key: Project
+          Value: 2048-game-cicd
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: 2048-game-igw
+        - Key: Project
+          Value: 2048-game-cicd
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: 2048-game-public-subnet-1
+        - Key: Project
+          Value: 2048-game-cicd
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: 2048-game-public-subnet-2
+        - Key: Project
+          Value: 2048-game-cicd
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 2048-game-public-rt
+        - Key: Project
+          Value: 2048-game-cicd
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # ==========================================
+  # S3 Bucket for Artifacts
+  # ==========================================
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '2048-game-artifacts-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # CodeBuild Project
+  # ==========================================
+  CodeBuildLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/codebuild/2048-game-build
+      RetentionInDays: 7
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: 2048-game-build
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: IMAGE_REPO_NAME
+            Value: !Ref ECRRepository
+      Source:
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref CodeBuildLogGroup
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # CodePipeline
+  # ==========================================
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: 2048-game-pipeline
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Ref GitHubRepo
+                BranchName: !Ref GitHubBranch
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: '1'
+              Configuration:
+                ClusterName: !Ref ECSCluster
+                ServiceName: !GetAtt ECSService.Name
+                FileName: imagedefinitions.json
+              InputArtifacts:
+                - Name: BuildOutput
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # CloudWatch Alarms and Monitoring
+  # ==========================================
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: 2048-game-alerts
+      DisplayName: 2048 Game Monitoring Alerts
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-High-CPU
+      AlarmDescription: Alert when ECS CPU exceeds 80%
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  HighMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-High-Memory
+      AlarmDescription: Alert when ECS Memory exceeds 80%
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-Lambda-Errors
+      AlarmDescription: Alert on Lambda function errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BackendAPIFunction
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  ALBTargetErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-ALB-Target-Errors
+      AlarmDescription: Alert when ALB target 5XX errors exceed threshold
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  ALBResponseTimeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-ALB-High-Response-Time
+      AlarmDescription: Alert when ALB response time is high
+      MetricName: TargetResponseTime
+      Namespace: AWS/ApplicationELB
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1.0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  DynamoDBUserErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-DynamoDB-User-Errors
+      AlarmDescription: Alert on DynamoDB user errors
+      MetricName: UserErrors
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref LeaderboardTable
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  DynamoDBSystemErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 2048-DynamoDB-System-Errors
+      AlarmDescription: Alert on DynamoDB system errors
+      MetricName: SystemErrors
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref LeaderboardTable
+      AlarmActions:
+        - !Ref SNSTopic
+      Tags:
+        - Key: Project
+          Value: 2048-game-cicd
+
+  # ==========================================
+  # CloudWatch Dashboard
+  # ==========================================
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: 2048-Game-Dashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/ECS", "CPUUtilization", {"stat": "Average", "dimensions": {"ClusterName": "${ECSCluster}", "ServiceName": "${ECSService.Name}"}}],
+                  ["...", {"stat": "Maximum"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "ECS CPU Utilization",
+                "yAxis": {"left": {"min": 0, "max": 100}}
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/ECS", "MemoryUtilization", {"stat": "Average", "dimensions": {"ClusterName": "${ECSCluster}", "ServiceName": "${ECSService.Name}"}}],
+                  ["...", {"stat": "Maximum"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "ECS Memory Utilization",
+                "yAxis": {"left": {"min": 0, "max": 100}}
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", {"stat": "Sum", "dimensions": {"FunctionName": "2048-game-api"}}],
+                  [".", "Errors", {"stat": "Sum", "dimensions": {"FunctionName": "2048-game-api"}}],
+                  [".", "Duration", {"stat": "Average", "dimensions": {"FunctionName": "2048-game-api"}}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Lambda Function Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits", {"stat": "Sum", "dimensions": {"TableName": "2048-leaderboard"}}],
+                  [".", "ConsumedWriteCapacityUnits", {"stat": "Sum", "dimensions": {"TableName": "2048-leaderboard"}}],
+                  [".", "UserErrors", {"stat": "Sum", "dimensions": {"TableName": "2048-leaderboard"}}],
+                  [".", "SystemErrors", {"stat": "Sum", "dimensions": {"TableName": "2048-leaderboard"}}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "DynamoDB Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/ApplicationELB", "TargetResponseTime", {"stat": "Average", "dimensions": {"LoadBalancer": "${ApplicationLoadBalancer.LoadBalancerFullName}", "TargetGroup": "${ECSTargetGroup.TargetGroupFullName}"}}],
+                  [".", "RequestCount", {"stat": "Sum", "dimensions": {"LoadBalancer": "${ApplicationLoadBalancer.LoadBalancerFullName}"}}],
+                  [".", "HTTPCode_Target_2XX_Count", {"stat": "Sum", "dimensions": {"LoadBalancer": "${ApplicationLoadBalancer.LoadBalancerFullName}"}}],
+                  [".", "HTTPCode_Target_5XX_Count", {"stat": "Sum", "dimensions": {"LoadBalancer": "${ApplicationLoadBalancer.LoadBalancerFullName}"}}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Load Balancer Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", {"stat": "Sum", "dimensions": {"ApiName": "2048-game-api"}}],
+                  [".", "4XXError", {"stat": "Sum", "dimensions": {"ApiName": "2048-game-api"}}],
+                  [".", "5XXError", {"stat": "Sum", "dimensions": {"ApiName": "2048-game-api"}}],
+                  [".", "Latency", {"stat": "Average", "dimensions": {"ApiName": "2048-game-api"}}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "API Gateway Metrics"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VPC'
+
+  PublicSubnet1Id:
+    Description: Public Subnet 1 ID
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicSubnet1'
+
+  PublicSubnet2Id:
+    Description: Public Subnet 2 ID
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicSubnet2'
+
+  PublicRouteTableId:
+    Description: Public Route Table ID
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicRouteTable'
+
+  ALBSecurityGroupId:
+    Description: ALB Security Group ID
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ALB-SG'
+
+  ECSSecurityGroupId:
+    Description: ECS Security Group ID
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ECS-SG'
+
+  ApplicationLoadBalancerDns:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-ALB-DNS'
+
+  ApplicationLoadBalancerArn:
+    Description: ARN of the Application Load Balancer
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub '${AWS::StackName}-ALB-ARN'
+
+  ECSTargetGroupArn:
+    Description: ARN of the ECS Target Group
+    Value: !Ref ECSTargetGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-TargetGroup-ARN'
+
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-ECS-Cluster'
+
+  ECSServiceName:
+    Description: ECS Service Name
+    Value: !GetAtt ECSService.Name
+    Export:
+      Name: !Sub '${AWS::StackName}-ECS-Service'
+
+  ECSServiceArn:
+    Description: ECS Service ARN
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${AWS::StackName}-ECS-Service-ARN'
+
+  ECSTaskDefinitionArn:
+    Description: ECS Task Definition ARN
+    Value: !Ref ECSTaskDefinition
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskDefinition-ARN'
+
+  ECSLogGroup:
+    Description: ECS CloudWatch Log Group
+    Value: !Ref ECSLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ECS-LogGroup'
+
+  ECRRepositoryUri:
+    Description: ECR Repository URI
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub '${AWS::StackName}-ECR-URI'
+
+  ECRRepositoryName:
+    Description: ECR Repository Name
+    Value: !Ref ECRRepository
+    Export:
+      Name: !Sub '${AWS::StackName}-ECR-Name'
+
+  ApiGatewayId:
+    Description: API Gateway ID
+    Value: !Ref ApiGateway
+    Export:
+      Name: !Sub '${AWS::StackName}-API-ID'
+
+  ApiGatewayUrl:
+    Description: API Gateway Endpoint URL
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/scores'
+    Export:
+      Name: !Sub '${AWS::StackName}-API-URL'
+
+  LambdaFunctionName:
+    Description: Lambda Function Name
+    Value: !Ref BackendAPIFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-Lambda-Name'
+
+  LambdaFunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt BackendAPIFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-Lambda-ARN'
+
+  DynamoDBTableName:
+    Description: DynamoDB Table Name
+    Value: !Ref LeaderboardTable
+    Export:
+      Name: !Sub '${AWS::StackName}-DynamoDB-Table'
+
+  DynamoDBTableArn:
+    Description: DynamoDB Table ARN
+    Value: !GetAtt LeaderboardTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DynamoDB-ARN'
+
+  ArtifactBucketName:
+    Description: S3 Artifact Bucket Name
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-Artifact-Bucket'
+
+  ArtifactBucketArn:
+    Description: S3 Artifact Bucket ARN
+    Value: !GetAtt ArtifactBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-Artifact-Bucket-ARN'
+
+  CodeBuildProjectName:
+    Description: CodeBuild Project Name
+    Value: !Ref CodeBuildProject
+    Export:
+      Name: !Sub '${AWS::StackName}-CodeBuild-Project'
+
+  CodeBuildProjectArn:
+    Description: CodeBuild Project ARN
+    Value: !GetAtt CodeBuildProject.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CodeBuild-ARN'
+
+  CodeBuildLogGroup:
+    Description: CodeBuild CloudWatch Log Group
+    Value: !Ref CodeBuildLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-CodeBuild-LogGroup'
+
+  CodePipelineName:
+    Description: CodePipeline Name
+    Value: !Ref CodePipeline
+    Export:
+      Name: !Sub '${AWS::StackName}-Pipeline'
+
+  CodePipelineArn:
+    Description: CodePipeline ARN
+    Value: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${CodePipeline}'
+    Export:
+      Name: !Sub '${AWS::StackName}-Pipeline-ARN'
+
+  SNSTopicArn:
+    Description: SNS Topic ARN for Alarms
+    Value: !Ref SNSTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SNS-Topic'
+
+  LambdaExecutionRoleArn:
+    Description: Lambda Execution Role ARN
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-Lambda-Role'
+
+  CodeBuildServiceRoleArn:
+    Description: CodeBuild Service Role ARN
+    Value: !GetAtt CodeBuildServiceRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CodeBuild-Role'
+
+  CodePipelineServiceRoleArn:
+    Description: CodePipeline Service Role ARN
+    Value: !GetAtt CodePipelineServiceRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CodePipeline-Role'
+
+  ECSTaskExecutionRoleArn:
+    Description: ECS Task Execution Role ARN
+    Value: !GetAtt ECSTaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ECSTask-Role'
+
+  MonitoringDashboardUrl:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=2048-Game-Dashboard'
+    Export:
+      Name: !Sub '${AWS::StackName}-Dashboard-URL'
